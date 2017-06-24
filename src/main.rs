@@ -45,10 +45,15 @@ impl TextStream {
 
 
 fn main() {
-
+	let _ = get_size();
 	let window = initscr();
 	window.refresh();
 	noecho();
+	if pancurses::has_colors() {
+		pancurses::start_color();
+	}
+	pancurses::init_pair(1, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
+	window.attrset(pancurses::COLOR_PAIR(1));
 	curs_set(0);
 	let mut streams = Vec::new();
 	loop {
