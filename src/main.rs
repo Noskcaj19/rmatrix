@@ -26,11 +26,19 @@ impl TextStream {
 		}
 	}
 	fn draw(&self, window: &pancurses::Window, height: usize) -> bool {
-		window.mvaddch(*self.y.borrow() as i32, self.x as i32, rand_char());
-		let y = *self.y.borrow();
+		let y = *self.y.borrow() as i32;
+		let x = self.x as i32;
+		// Add char
+		window.mvaddch(y, x, rand_char());
+		// Set leader color to white
+		window.mv(y, x);
+		window.chgat(1, 0, 2);
+		window.mv(y-1, x);
+		window.chgat(1, 0, 1);
+		let y = y as usize;
 		if y >= self.len {
 			let last = (y - self.len) as i32;
-			window.mvaddch(last, self.x as i32, ' ');	
+			window.mvaddch(last, x, ' ');	
 			if (y - self.len) > height {
 				return false
 			}	
@@ -50,6 +58,8 @@ fn main() {
 		pancurses::start_color();
 	}
 	pancurses::init_pair(1, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
+	pancurses::init_pair(2, pancurses::COLOR_WHITE, pancurses::COLOR_BLACK);
+
 	window.attrset(pancurses::COLOR_PAIR(1));
 	curs_set(0);
 	let mut streams = Vec::new();
