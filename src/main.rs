@@ -1,13 +1,10 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
 extern crate rand;
 extern crate pancurses;
 extern crate terminal_size;
 
 use std::cell::RefCell;
 use rand::{thread_rng, Rng};
-use pancurses::{initscr, endwin, Input, noecho, curs_set};
+use pancurses::{initscr, endwin, noecho, curs_set};
 use terminal_size::{Width, Height, terminal_size};
 
 fn rand_char() -> char {
@@ -60,6 +57,8 @@ fn main() {
 		let (width, height) = get_size();
 		let new_stream = make_stream(width, height);
 		streams.push(new_stream);
+		let new_stream2 = make_stream(width, height);
+		streams.push(new_stream2);
 		streams.retain(|ref stream| {
 			stream.draw(&window, height)
 		});
