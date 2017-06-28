@@ -33,8 +33,13 @@ impl TextStream {
 		// Set leader color to white
 		window.mv(y, x);
 		window.chgat(1, 0, 2);
+		// Add random bolding
 		window.mv(y-1, x);
-		window.chgat(1, 0, 1);
+		if thread_rng().gen::<u8>() < 60u8 /* .3 */ {
+			window.chgat(1, pancurses::A_BOLD, 1);
+		} else {
+			window.chgat(1, 0, 1);
+		}
 		let y = y as usize;
 		if y >= self.len {
 			let last = (y - self.len) as i32;
