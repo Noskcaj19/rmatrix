@@ -4,7 +4,7 @@ extern crate terminal_size;
 
 use std::cell::RefCell;
 use rand::{thread_rng, Rng};
-use pancurses::{initscr, endwin, noecho, curs_set};
+use pancurses::{initscr, endwin, noecho, curs_set, Input};
 use terminal_size::{Width, Height, terminal_size};
 
 fn rand_char() -> char {
@@ -52,6 +52,7 @@ impl TextStream {
 fn main() {
 	let _ = get_size();
 	let window = initscr();
+	window.nodelay(true);
 	window.refresh();
 	noecho();
 	if pancurses::has_colors() {
@@ -73,6 +74,10 @@ fn main() {
 			stream.draw(&window, height)
 		});
 		window.refresh();
+		match window.getch() {
+			Some(Input::Character('q')) => break,
+			_ => (),
+		}
 		std::thread::sleep(std::time::Duration::from_millis(100));
 	}
 	endwin();
