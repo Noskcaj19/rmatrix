@@ -64,8 +64,6 @@ fn main() {
 		pancurses::start_color();
 		pancurses::use_default_colors();
 	}
-	pancurses::init_pair(1, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
-	pancurses::init_pair(2, pancurses::COLOR_WHITE, pancurses::COLOR_BLACK);
 	pancurses::init_pair(1, pancurses::COLOR_GREEN, -1);
 	pancurses::init_pair(2, pancurses::COLOR_WHITE, -1);
 	window.attrset(pancurses::COLOR_PAIR(1));
