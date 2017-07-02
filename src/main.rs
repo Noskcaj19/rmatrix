@@ -25,6 +25,11 @@ impl TextStream {
 			len
 		}
 	}
+	fn make_stream(width: usize, height: usize) -> TextStream {
+		let x_pos = rand::thread_rng().gen_range(0, width);
+		let len = rand::thread_rng().gen_range(0, height);
+		TextStream::new(len, x_pos)
+	}
 	fn draw(&self, window: &pancurses::Window, height: usize) -> bool {
 		let y = *self.y.borrow() as i32;
 		let x = self.x as i32;
@@ -43,16 +48,15 @@ impl TextStream {
 		let y = y as usize;
 		if y >= self.len {
 			let last = (y - self.len) as i32;
-			window.mvaddch(last, x, ' ');	
+			window.mvaddch(last, x, ' ');
 			if (y - self.len) > height {
 				return false
-			}	
+			}
 		}
 		*self.y.borrow_mut() += 1;
 		true
 	}
 }
-
 
 fn main() {
 	let _ = get_size();
@@ -71,10 +75,11 @@ fn main() {
 	let mut streams = Vec::new();
 	loop {
 		let (width, height) = get_size();
-		let new_stream = make_stream(width, height);
-		streams.push(new_stream);
-		let new_stream2 = make_stream(width, height);
-		streams.push(new_stream2);
+		for _ in 0..4 {
+			if let Some(new_stream) = new_stream(width, height, &streams) {
+				streams.push(new_stream);
+			}
+		}
 		streams.retain(|ref stream| {
 			stream.draw(&window, height)
 		});
@@ -88,10 +93,25 @@ fn main() {
 	endwin();
 }
 
-fn make_stream(width: usize, height: usize) -> TextStream {
-	let x_pos = rand::thread_rng().gen_range(0, width);
-	let len = rand::thread_rng().gen_range(0, height);
-	TextStream::new(len, x_pos)
+fn check_stream(new_stream: &TextStream, height: usize, streams: &Vec<TextStream>) -> bool {
+	for stream in streams {
+		if stream.x == new_stream.x {
+			let stream_end = if stream.x > stream.len {stream.x - stream.len} else {stream.x};
+			if stream_end < height/3 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn new_stream(width: usize, height: usize, streams: &Vec<TextStream>) -> Option<TextStream> {
+	let new_stream = TextStream::make_stream(width, height);
+	if check_stream(&new_stream, height, streams) {
+		Some(new_stream)
+	} else {
+		None
+	}
 }
 
 fn get_size() -> (usize, usize) {
