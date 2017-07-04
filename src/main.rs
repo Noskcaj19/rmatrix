@@ -75,7 +75,8 @@ fn main() {
 	let mut streams = Vec::new();
 	loop {
 		let (width, height) = get_size();
-		for _ in 0..4 {
+		let to_add = (width as f32 / 40f32).ceil();
+		for _ in 0..to_add as usize {
 			if let Some(new_stream) = new_stream(width, height, &streams) {
 				streams.push(new_stream);
 			}
