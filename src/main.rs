@@ -11,6 +11,10 @@ fn rand_char() -> char {
 	thread_rng().gen_range(b'!', b'}') as char
 }
 
+fn rand_kana() -> String {
+	String::from_utf16(&vec![thread_rng().gen_range(0xff62, 0xff9e)]).unwrap()
+}
+
 struct TextStream {
 	x: usize,
 	y: RefCell<usize>,
@@ -34,7 +38,8 @@ impl TextStream {
 		let y = *self.y.borrow() as i32;
 		let x = self.x as i32;
 		// Add char
-		window.mvaddch(y, x, rand_char());
+		// window.mvaddch(y, x, rand_char());
+		window.mvaddstr(y, x, &rand_kana());
 		// Set leader color to white
 		window.mv(y, x);
 		window.chgat(1, 0, 2);
