@@ -1,9 +1,10 @@
 [package]
+authors = ["Noskcaj <kcajdev@gmail.com>"]
 name = "rmatrix"
 version = "0.1.0"
-authors = ["Noskcaj <kcajdev@gmail.com>"]
 
 [dependencies]
+clap = "2.26.2"
 pancurses = "0.8"
 rand = "0.3"
 terminal_size = "*"
