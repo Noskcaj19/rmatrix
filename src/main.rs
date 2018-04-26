@@ -3,9 +3,9 @@ extern crate pancurses;
 extern crate rand;
 extern crate terminal_size;
 
-use std::cell::RefCell;
-use rand::{thread_rng, Rng};
 use pancurses::{curs_set, endwin, initscr, noecho, Input};
+use rand::{thread_rng, Rng};
+use std::cell::RefCell;
 use terminal_size::{terminal_size, Height, Width};
 
 use clap::{App, Arg};
@@ -81,7 +81,7 @@ impl TextStream {
 }
 
 fn main() {
-	    let matches = App::new("rMatrix")
+    let matches = App::new("rMatrix")
         .version("1.0")
         .author("Noskcaj19")
         .about("The Matrix, in Rust!")
