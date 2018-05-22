@@ -42,6 +42,17 @@ pub struct TextStream {
     pub alive: bool,
 }
 
+impl TextStream {
+    pub fn new(x: usize, len: usize) -> TextStream {
+        TextStream {
+            x,
+            y: 0,
+            len,
+            alive: true,
+        }
+    }
+}
+
 fn random_ascii(rng: &mut XorShiftRng) -> char {
     rng.gen_range(b'!', b'}') as char
 }
@@ -92,12 +103,10 @@ impl App {
     pub fn run(&mut self) {
         let mut keys = async_stdin().keys();
         loop {
-            self.streams.push(TextStream {
-                x: self.rng.gen_range(0, self.size.width),
-                y: 0,
-                len: self.rng.gen_range(4, 25),
-                alive: true,
-            });
+            self.streams.push(TextStream::new(
+                self.rng.gen_range(0, self.size.width),
+                self.rng.gen_range(4, 25),
+            ));
 
             self.draw_streams();
             self.streams.retain(|stream| stream.alive);
