@@ -7,13 +7,19 @@ use clap::{App as ClapApp, Arg};
 use termbuf::termion::async_stdin;
 use termbuf::termion::event::Key;
 use termbuf::termion::input::TermRead;
-use termbuf::Color;
+use termbuf::{Color, Style};
 use termbuf::{TermBuf, TermSize};
 
 use rand::prelude::*;
 use rand::prng::XorShiftRng;
 use std::thread;
 use std::time::Duration;
+
+struct Options {
+    char_type: CharType,
+    delay: usize,
+    bolding: bool,
+}
 
 enum CharType {
     Ascii,
@@ -25,8 +31,7 @@ struct App {
     size: TermSize,
     streams: Vec<TextStream>,
     rng: XorShiftRng,
-    char_type: CharType,
-    delay: usize,
+    opts: Options,
 }
 
 #[derive(Clone, Debug)]
@@ -54,7 +59,7 @@ impl App {
         // Borrowck trick
         let mut rng = &mut self.rng;
         for stream in self.streams.iter_mut() {
-            let ch = if let CharType::Ascii = self.char_type {
+            let ch = if let CharType::Ascii = self.opts.char_type {
                 random_ascii(&mut rng)
             } else {
                 random_kana(&mut rng)
@@ -62,8 +67,16 @@ impl App {
             // Print random character in stream
             self.termbuf
                 .char_builder(ch, stream.x, stream.y)
-                .fg(Color::Green)
+                .fg(Color::White)
                 .build();
+
+            // TODO: magic number
+            if rng.gen::<u8>() < 60u8 && self.opts.bolding {
+                self.termbuf
+                    .set_cell_style(Style::Bold, stream.x, stream.y.saturating_sub(1));
+            }
+            self.termbuf
+                .set_cell_fg(Color::Green, stream.x, stream.y.saturating_sub(1));
 
             // Clear stream
             if stream.y >= stream.len {
@@ -95,7 +108,7 @@ impl App {
                     break
                 }
                 _ => {
-                    thread::sleep(Duration::from_millis(self.delay as u64));
+                    thread::sleep(Duration::from_millis(self.opts.delay as u64));
                 }
             }
         }
@@ -115,18 +128,12 @@ fn main() -> Result<(), std::io::Error> {
         termbuf,
         size,
         streams: vec![],
-        char_type: opts.char_type,
-        delay: opts.delay,
+        opts,
         rng,
     };
 
     app.run();
     Ok(())
-}
-
-struct Options {
-    char_type: CharType,
-    delay: usize,
 }
 
 fn parse_args() -> Options {
@@ -139,6 +146,12 @@ fn parse_args() -> Options {
                 .short("a")
                 .long("ascii")
                 .help("Force ASCII only characters"),
+        )
+        .arg(
+            Arg::with_name("no-bold")
+                .short("n")
+                .long("normal")
+                .help("Use only normal weight characters"),
         )
         .arg(
             Arg::with_name("delay")
@@ -157,5 +170,6 @@ fn parse_args() -> Options {
     Options {
         char_type,
         delay: matches.value_of("delay").unwrap().parse().unwrap_or(45),
+        bolding: !matches.is_present("no-bold"),
     }
 }
