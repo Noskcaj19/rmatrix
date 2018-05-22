@@ -1,177 +1,161 @@
 extern crate clap;
-extern crate pancurses;
 extern crate rand;
-extern crate terminal_size;
+extern crate termbuf;
 
-use pancurses::{curs_set, endwin, initscr, noecho, Input};
-use rand::{thread_rng, Rng};
-use std::cell::RefCell;
-use terminal_size::{terminal_size, Height, Width};
+use clap::{App as ClapApp, Arg};
 
-use clap::{App, Arg};
+use termbuf::termion::async_stdin;
+use termbuf::termion::event::Key;
+use termbuf::termion::input::TermRead;
+use termbuf::Color;
+use termbuf::{TermBuf, TermSize};
 
-fn rand_char() -> char {
-    thread_rng().gen_range(b'!', b'}') as char
-}
+use rand::prelude::*;
+use rand::prng::XorShiftRng;
+use std::thread;
+use std::time::Duration;
 
-fn rand_kana() -> String {
-    String::from_utf16(&vec![thread_rng().gen_range(0xff62, 0xff9e)]).unwrap()
-}
-
-enum DrawMode {
-    ASCII,
+enum CharType {
+    Ascii,
     Kana,
 }
 
-struct TextStream {
-    x: usize,
-    y: RefCell<usize>,
-    len: usize,
+struct App {
+    termbuf: TermBuf,
+    size: TermSize,
+    streams: Vec<TextStream>,
+    rng: XorShiftRng,
+    char_type: CharType,
+    delay: usize,
 }
 
-impl TextStream {
-    fn new(len: usize, x: usize) -> TextStream {
-        TextStream {
-            x,
-            y: RefCell::new(0),
-            len,
-        }
-    }
-    fn make_stream(width: usize, height: usize) -> TextStream {
-        let x_pos = rand::thread_rng().gen_range(0, width);
-        let len = rand::thread_rng().gen_range(0, height);
-        TextStream::new(len, x_pos)
-    }
-    fn draw(&self, window: &pancurses::Window, height: usize, mode: &DrawMode) -> bool {
-        let y = *self.y.borrow() as i32;
-        let x = self.x as i32;
-        // Add char
-        // if let &DrawMode::ASCII = mode {
-        //     window.mvaddch(y, x, rand_char());
-        // } else {
-        //     window.mvaddstr(y, x, &rand_kana());
-        // }
-        match *mode {
-            DrawMode::ASCII => window.mvaddch(y, x, rand_char()),
-            DrawMode::Kana => window.mvaddstr(y, x, &rand_kana()),
-        };
-        // Set leader color to white
-        window.mv(y, x);
-        window.chgat(1, 0, 2);
-        // Add random bolding
-        window.mv(y - 1, x);
-        if thread_rng().gen::<u8>() < 60u8
-        /* .3 */
-        {
-            window.chgat(1, pancurses::A_BOLD, 1);
-        } else {
-            window.chgat(1, 0, 1);
-        }
-        let y = y as usize;
-        if y >= self.len {
-            let last = (y - self.len) as i32;
-            window.mvaddch(last, x, ' ');
-            if (y - self.len) > height {
-                return false;
+#[derive(Clone, Debug)]
+pub struct TextStream {
+    pub x: usize,
+    pub y: usize,
+    pub len: usize,
+    pub alive: bool,
+}
+
+fn random_ascii(rng: &mut XorShiftRng) -> char {
+    rng.gen_range(b'!', b'}') as char
+}
+
+fn random_kana(rng: &mut XorShiftRng) -> char {
+    let x = &[rng.gen_range(0xff62, 0xff9e)];
+    std::char::decode_utf16(x.iter().cloned())
+        .next()
+        .unwrap()
+        .unwrap()
+}
+
+impl App {
+    fn draw_streams(&mut self) {
+        // Borrowck trick
+        let mut rng = &mut self.rng;
+        for stream in self.streams.iter_mut() {
+            let ch = if let CharType::Ascii = self.char_type {
+                random_ascii(&mut rng)
+            } else {
+                random_kana(&mut rng)
+            };
+            // Print random character in stream
+            self.termbuf
+                .char_builder(ch, stream.x, stream.y)
+                .fg(Color::Green)
+                .build();
+
+            // Clear stream
+            if stream.y >= stream.len {
+                self.termbuf.set_char(' ', stream.x, stream.y - stream.len);
+            };
+            stream.y += 1;
+            if (stream.y.saturating_sub(stream.len)) > self.size.height {
+                stream.alive = false;
             }
         }
-        *self.y.borrow_mut() += 1;
-        true
+    }
+
+    pub fn run(&mut self) {
+        let mut keys = async_stdin().keys();
+        loop {
+            self.streams.push(TextStream {
+                x: self.rng.gen_range(0, self.size.width),
+                y: 0,
+                len: self.rng.gen_range(4, 25),
+                alive: true,
+            });
+
+            self.draw_streams();
+            self.streams.retain(|stream| stream.alive);
+
+            self.termbuf.draw().expect("error drawing terminal");
+            match keys.next() {
+                Some(Ok(Key::Char('q'))) | Some(Ok(Key::Ctrl('c'))) | Some(Ok(Key::Ctrl('d'))) => {
+                    break
+                }
+                _ => {
+                    thread::sleep(Duration::from_millis(self.delay as u64));
+                }
+            }
+        }
+        self.termbuf.set_cursor_visible(true).unwrap();
     }
 }
 
-fn main() {
-    let matches = App::new("rMatrix")
-        .version("1.0")
+fn main() -> Result<(), std::io::Error> {
+    let opts = parse_args();
+    let mut termbuf = termbuf::TermBuf::init()?;
+    termbuf.set_cursor_visible(false)?;
+
+    let size = termbuf.size()?;
+    let rng = XorShiftRng::from_entropy();
+
+    let mut app = App {
+        termbuf,
+        size,
+        streams: vec![],
+        char_type: opts.char_type,
+        delay: opts.delay,
+        rng,
+    };
+
+    app.run();
+    Ok(())
+}
+
+struct Options {
+    char_type: CharType,
+    delay: usize,
+}
+
+fn parse_args() -> Options {
+    let matches = ClapApp::new("rMatrix")
+        .version("2.0")
         .author("Noskcaj19")
-        .about("The Matrix, in Rust!")
+        .about("The Matrix effect in your terminal")
         .arg(
             Arg::with_name("ascii")
                 .short("a")
                 .long("ascii")
-                .help("Whether to force ASCII mode"),
+                .help("Force ASCII only characters"),
+        )
+        .arg(
+            Arg::with_name("delay")
+                .short("u")
+                .long("delay")
+                .help("Set the update delay")
+                .default_value("45"),
         )
         .get_matches();
 
-    let _ = get_size();
-    let window = initscr();
-    window.nodelay(true);
-    window.refresh();
-    noecho();
-    if pancurses::has_colors() {
-        pancurses::start_color();
-        pancurses::use_default_colors();
-    }
-    pancurses::init_pair(1, pancurses::COLOR_GREEN, -1);
-    pancurses::init_pair(2, pancurses::COLOR_WHITE, -1);
-    window.attrset(pancurses::COLOR_PAIR(1));
-    curs_set(0);
-
-    let mode = if matches.is_present("ascii") {
-        DrawMode::ASCII
+    let char_type = if matches.is_present("ascii") {
+        CharType::Ascii
     } else {
-        DrawMode::Kana
+        CharType::Kana
     };
-
-    let mut streams = Vec::new();
-    loop {
-        let (width, height) = get_size();
-        let to_add = (width as f32 / 40f32).ceil();
-        for _ in 0..to_add as usize {
-            if let Some(new_stream) = new_stream(width, height, &streams) {
-                streams.push(new_stream);
-            }
-        }
-        streams.retain(|ref stream| stream.draw(&window, height, &mode));
-        window.refresh();
-        match window.getch() {
-            Some(Input::Character('q')) => break,
-            _ => (),
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    endwin();
-}
-
-fn check_stream(new_stream: &TextStream, height: usize, streams: &Vec<TextStream>) -> bool {
-    for stream in streams {
-        if stream.x == new_stream.x {
-            let stream_end = if stream.x > stream.len {
-                stream.x - stream.len
-            } else {
-                stream.x
-            };
-            if stream_end < height / 3 {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-fn new_stream(width: usize, height: usize, streams: &Vec<TextStream>) -> Option<TextStream> {
-    let new_stream = TextStream::make_stream(width, height);
-    if check_stream(&new_stream, height, streams) {
-        Some(new_stream)
-    } else {
-        None
-    }
-}
-
-fn get_size() -> (usize, usize) {
-    if let Some((w, h)) = term_size() {
-        return (w as usize, h as usize);
-    } else {
-        println!("Unable to get console size");
-        std::process::exit(1);
-    }
-}
-
-fn term_size() -> Option<(u16, u16)> {
-    let size = terminal_size();
-    if let Some((Width(w), Height(h))) = size {
-        return Some((w, h));
-    } else {
-        return None;
+    Options {
+        char_type,
+        delay: matches.value_of("delay").unwrap().parse().unwrap_or(45),
     }
 }
