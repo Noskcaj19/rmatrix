@@ -121,7 +121,7 @@ impl App {
                 }
             }
         }
-        self.termbuf.set_cursor_visible(true).unwrap();
+        // self.termbuf.set_cursor_visible(true).unwrap();
     }
 }
 
