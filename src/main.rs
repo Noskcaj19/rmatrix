@@ -1,5 +1,7 @@
 extern crate clap;
+extern crate parking_lot;
 extern crate rand;
+extern crate signal;
 extern crate termbuf;
 
 use clap::{App as ClapApp, Arg};
@@ -10,10 +12,14 @@ use termbuf::termion::input::TermRead;
 use termbuf::{Color, Style};
 use termbuf::{TermBuf, TermSize};
 
+use parking_lot::RwLock;
 use rand::prelude::*;
 use rand::prng::XorShiftRng;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+
+mod signal_handler;
 
 struct Options {
     char_type: CharType,
@@ -28,13 +34,13 @@ enum CharType {
 
 struct App {
     termbuf: TermBuf,
-    size: TermSize,
-    streams: Vec<TextStream>,
+    size: Arc<RwLock<TermSize>>,
+    streams: Streams,
     rng: XorShiftRng,
     opts: Options,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TextStream {
     pub x: usize,
     pub y: usize,
@@ -50,6 +56,40 @@ impl TextStream {
             len,
             alive: true,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Streams(Vec<TextStream>);
+
+impl Streams {
+    pub fn new() -> Streams {
+        Streams(Vec::new())
+    }
+
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<TextStream> {
+        self.0.iter_mut()
+    }
+
+    pub fn checked_add(&mut self, rng: &mut XorShiftRng, width: usize) {
+        let new_x = rng.gen_range(0, width);
+        if self.0.iter().any(|s| s.x == new_x) {
+            return;
+        }
+        self.0.push(TextStream::new(new_x, rng.gen_range(4, 25)));
+    }
+
+    pub fn cull(&mut self) {
+        self.0.retain(|stream| stream.alive);
+    }
+}
+
+impl IntoIterator for Streams {
+    type Item = TextStream;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -69,6 +109,7 @@ impl App {
     fn draw_streams(&mut self) {
         // Borrowck trick
         let mut rng = &mut self.rng;
+        let size = self.size.read();
         for stream in self.streams.iter_mut() {
             let ch = if let CharType::Ascii = self.opts.char_type {
                 random_ascii(&mut rng)
@@ -94,7 +135,7 @@ impl App {
                 self.termbuf.set_char(' ', stream.x, stream.y - stream.len);
             };
             stream.y += 1;
-            if (stream.y.saturating_sub(stream.len)) > self.size.height {
+            if (stream.y.saturating_sub(stream.len)) > size.height {
                 stream.alive = false;
             }
         }
@@ -103,13 +144,15 @@ impl App {
     pub fn run(&mut self) {
         let mut keys = async_stdin().keys();
         loop {
-            self.streams.push(TextStream::new(
-                self.rng.gen_range(0, self.size.width),
-                self.rng.gen_range(4, 25),
-            ));
+            {
+                let size = self.size.read();
+                for _ in 0..(size.width as f32 / 40f32).ceil() as usize {
+                    self.streams.checked_add(&mut self.rng, size.width);
+                }
+            }
 
             self.draw_streams();
-            self.streams.retain(|stream| stream.alive);
+            self.streams.cull();
 
             self.termbuf.draw().expect("error drawing terminal");
             match keys.next() {
@@ -121,7 +164,6 @@ impl App {
                 }
             }
         }
-        // self.termbuf.set_cursor_visible(true).unwrap();
     }
 }
 
@@ -133,10 +175,14 @@ fn main() -> Result<(), std::io::Error> {
     let size = termbuf.size()?;
     let rng = XorShiftRng::from_entropy();
 
+    let size = Arc::new(RwLock::new(size));
+
+    let sig_handler = signal_handler::SignalHandler::start(size.clone());
+
     let mut app = App {
         termbuf,
         size,
-        streams: vec![],
+        streams: Streams::new(),
         opts,
         rng,
     };
